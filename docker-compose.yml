@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: chat-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-chatdb}
+      POSTGRES_USER: ${DB_USERNAME:-chatuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-chatpass}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-chatuser} -d ${DB_NAME:-chatdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chat-network
+
+  # pgAdmin - Database Management Tool
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: chat-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@chat.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - chat-network
+
+  # Spring Boot Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat-microservice
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-chatdb}
+      DB_USERNAME: ${DB_USERNAME:-chatuser}
+      DB_PASSWORD: ${DB_PASSWORD:-chatpass}
+      API_KEY: ${API_KEY:-my-secret-key}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SHOW_SQL: ${SHOW_SQL:-false}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_logs:/app/logs
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  app_logs:
+    driver: local
+
+networks:
+  chat-network:
+    driver: bridge
